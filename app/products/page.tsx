@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { UrlObject } from "url";
 
 import ProductGridLoadMore from "@/components/product/product-grid-load-more";
 import { fetchCategories, fetchProducts } from "@/utils/woocommerce";
@@ -43,16 +44,19 @@ export default async function ProductsPage({ searchParams }: Props) {
 
   const buildHref = (
     options: { categoryValue?: string; pageValue?: number } = {},
-  ) => {
+  ): UrlObject => {
     const { categoryValue, pageValue } = options;
-    const params = new URLSearchParams();
-    if (query) params.set("query", query);
-    if (categoryValue) params.set("category", categoryValue);
+    const params: Record<string, string> = {};
+    if (query) params.query = query;
+    if (categoryValue) params.category = categoryValue;
     if (pageValue && pageValue > 1) {
-      params.set("page", String(pageValue));
+      params.page = String(pageValue);
     }
-    const search = params.toString();
-    return search ? `/products?${search}` : "/products";
+
+    return {
+      pathname: "/products",
+      ...(Object.keys(params).length ? { query: params } : {}),
+    };
   };
   const categoryId = selectedCategory?.id ?? null;
   const emptyState =
