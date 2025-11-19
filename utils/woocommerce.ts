@@ -45,8 +45,8 @@ const request = async <T>(fn: () => Promise<{ data: unknown }>): Promise<T> => {
 export const fetchProducts = async (
   params: Record<string, string | number | boolean> = {},
 ): Promise<Product[]> => {
-  return request(() =>
-    api.get<Product[]>("products", {
+  return request<Product[]>(() =>
+    api.get("products", {
       per_page: 12,
       status: "publish",
       ...params,
@@ -68,11 +68,11 @@ export const fetchProductBySlug = async (
 };
 
 export const fetchProductById = async (id: number): Promise<Product> =>
-  request(() => api.get<Product>(`products/${id}`));
+  request<Product>(() => api.get(`products/${id}`));
 
 export const fetchCategories = async (): Promise<Category[]> =>
-  request(() =>
-    api.get<Category[]>("products/categories", {
+  request<Category[]>(() =>
+    api.get("products/categories", {
       per_page: 25,
       orderby: "name",
     }),
@@ -103,8 +103,8 @@ export const createWooOrder = async (
     throw new Error("Cart is empty. Add items before checking out.");
   }
 
-  return request(() =>
-    api.post<Order>("orders", {
+  return request<Order>(() =>
+    api.post("orders", {
       set_paid: payload.set_paid ?? false,
       payment_method: payload.payment_method,
       payment_method_title: payload.payment_method_title,
