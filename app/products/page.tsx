@@ -26,12 +26,20 @@ export default async function ProductsPage({ searchParams }: Props) {
   );
 
   const perPage = 12;
-  const products = await fetchProducts({
-    search: query || undefined,
-    category: selectedCategory?.id,
+  const productParams: Record<string, string | number | boolean> = {
     page,
     per_page: perPage,
-  });
+  };
+
+  if (selectedCategory?.id) {
+    productParams.category = selectedCategory.id;
+  }
+
+  if (query) {
+    productParams.search = query;
+  }
+
+  const products = await fetchProducts(productParams);
 
   const buildHref = (
     options: { categoryValue?: string; pageValue?: number } = {},
