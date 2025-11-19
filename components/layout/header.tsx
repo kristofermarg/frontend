@@ -1,9 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { Route } from "next";
 
 import CartLink from "@/components/cart/cart-link";
 
-const navItems = [
+const navItems: Array<{ href: Route; label: string }> = [
   { href: "/", label: "Heim" },
   { href: "/products", label: "Vefverslun" },
 ];
