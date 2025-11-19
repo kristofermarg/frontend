@@ -30,12 +30,20 @@ export async function GET(request: Request) {
       ? parsedPerPage
       : PER_PAGE_DEFAULT;
 
-  const products = await fetchProducts({
-    search: query || undefined,
-    category: categoryId,
+  const productParams: Record<string, string | number | boolean> = {
     page,
     per_page: perPage,
-  });
+  };
+
+  if (typeof categoryId === "number") {
+    productParams.category = categoryId;
+  }
+
+  if (typeof query === "string" && query.length > 0) {
+    productParams.search = query;
+  }
+
+  const products = await fetchProducts(productParams);
 
   return NextResponse.json({ products });
 }
