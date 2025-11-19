@@ -33,10 +33,10 @@ const sanitizeWooError = (error: unknown): Error => {
   return new Error("Unexpected WooCommerce error.");
 };
 
-const request = async <T>(fn: () => Promise<{ data: T }>): Promise<T> => {
+const request = async <T>(fn: () => Promise<{ data: unknown }>): Promise<T> => {
   try {
     const response = await fn();
-    return response.data;
+    return response.data as T;
   } catch (error) {
     throw sanitizeWooError(error);
   }
