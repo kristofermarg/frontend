@@ -50,6 +50,9 @@ const fieldLabels: Record<keyof typeof initialForm, string> = {
 };
 
 type ShippingRate = Awaited<ReturnType<typeof fetchPostisRates>>[number];
+type OrderConfirmationRoute =
+  | "/order-confirmation"
+  | `/order-confirmation?orderId=${string}`;
 
 export default function CheckoutForm() {
   const { items, subtotal, clearCart } = useCart();
@@ -216,8 +219,10 @@ export default function CheckoutForm() {
       setShippingRates([]);
       setSelectedShippingId(null);
       const orderId = data?.id;
-      const query = orderId ? `?orderId=${orderId}` : "";
-      router.push(`/order-confirmation${query}`);
+      const orderConfirmationUrl: OrderConfirmationRoute = orderId
+        ? `/order-confirmation?orderId=${orderId}`
+        : "/order-confirmation";
+      router.push(orderConfirmationUrl);
     } catch (err) {
       setStatus("error");
       setError(
