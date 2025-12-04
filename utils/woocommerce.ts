@@ -15,11 +15,13 @@ const api = new WooCommerceRestApi({
   url: process.env.WOOCOMMERCE_URL ?? "https://backend.webdev.is",
   consumerKey:
     process.env.WOOCOMMERCE_KEY ??
-    "cs_acbe3c5c0038e31abf40e1b191c63e467b91dc6b",
+    "ck_87ca4def17199c4ee23697a35e982bd8058d0b52",
   consumerSecret:
     process.env.WOOCOMMERCE_SECRET ??
-    "ck_87ca4def17199c4ee23697a35e982bd8058d0b52",
+    "cs_acbe3c5c0038e31abf40e1b191c63e467b91dc6b",
   version: "wc/v3",
+  // Use query string auth to avoid hosts blocking basic auth on POST requests.
+  queryStringAuth: true,
 });
 
 const sanitizeWooError = (error: unknown): Error => {
