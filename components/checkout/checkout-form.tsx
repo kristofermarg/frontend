@@ -1,7 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCart } from "@/components/cart/cart-provider";
 import { formatCurrency } from "@/lib/price";
@@ -20,23 +19,6 @@ const initialForm = {
   phone: "",
 };
 
-const paymentMethods: {
-  id: CartShape["payment_method"];
-  title: string;
-  description?: string;
-}[] = [
-  {
-    id: "bacs",
-    title: "Greiðsla með millifærslu",
-    description: "Staðfestu pöntun og millifærðu inn á reikning Tactica.",
-  },
-  {
-    id: "cod",
-    title: "Greitt við afhendingu",
-    description: "Greiðsla fer fram á ákvörðuðum afhendingarstað.",
-  },
-];
-
 const fieldLabels: Record<keyof typeof initialForm, string> = {
   first_name: "Fornafn",
   last_name: "Eftirnafn",
@@ -49,25 +31,34 @@ const fieldLabels: Record<keyof typeof initialForm, string> = {
   phone: "Sími",
 };
 
+type PaymentMethod = {
+  id: CartShape["payment_method"];
+  title: string;
+  description?: string;
+};
+
 type ShippingRate = Awaited<ReturnType<typeof fetchPostisRates>>[number];
-type OrderConfirmationRoute =
-  | "/order-confirmation"
-  | `/order-confirmation?orderId=${string}`;
 
 export default function CheckoutForm() {
-  const { items, subtotal, clearCart } = useCart();
-  const router = useRouter();
+  const { items, subtotal } = useCart();
   const [form, setForm] = useState(initialForm);
-  const [paymentMethod, setPaymentMethod] = useState<CartShape["payment_method"]>(
-    paymentMethods[0].id,
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<CartShape["payment_method"] | null>(
+    null,
   );
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
   const [selectedShippingId, setSelectedShippingId] = useState<string | null>(null);
   const [shippingLoading, setShippingLoading] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [lastShippingFetchKey, setLastShippingFetchKey] = useState<string | null>(
+    null,
+  );
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
     "idle",
   );
   const [error, setError] = useState<string | null>(null);
+
+  const backendUrl = process.env.NEXT_PUBLIC_WP_URL;
 
   const lineItems = useMemo(
     () =>
@@ -81,8 +72,9 @@ export default function CheckoutForm() {
   const selectedPaymentMethod = useMemo(
     () =>
       paymentMethods.find((method) => method.id === paymentMethod) ??
-      paymentMethods[0],
-    [paymentMethod],
+      paymentMethods[0] ??
+      null,
+    [paymentMethod, paymentMethods],
   );
 
   const selectedShippingCost = useMemo(
@@ -97,6 +89,52 @@ export default function CheckoutForm() {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   };
+
+  const loadPaymentMethods = useCallback(async () => {
+    setPaymentLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/payment-methods", {
+        cache: "no-store",
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(
+          data?.message ??
+            `Ekki tókst að sækja greiðslumáta (${res.status} ${res.statusText}).`,
+        );
+      }
+
+      const methods: PaymentMethod[] = Array.isArray(data?.payment_methods)
+        ? data.payment_methods
+        : [];
+
+      if (!methods.length) {
+        throw new Error("Engir greiðslumátar fundust eins og er.");
+      }
+
+      setPaymentMethods(methods);
+      setPaymentMethod((current) => {
+        const stillSelected = methods.find((method) => method.id === current);
+        return stillSelected?.id ?? methods[0]?.id ?? null;
+      });
+      return methods;
+    } catch (err) {
+      setPaymentMethods([]);
+      setPaymentMethod(null);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Ekki tókst að sækja greiðslumáta.",
+      );
+      return [] as PaymentMethod[];
+    } finally {
+      setPaymentLoading(false);
+    }
+  }, []);
 
   const loadShippingRates = useCallback(async () => {
     if (!form.postcode) {
@@ -119,11 +157,11 @@ export default function CheckoutForm() {
           quantity: line.quantity,
         })),
         {
-        country: "IS",
-        city: form.city,
-        postcode: form.postcode,
-        address_1: form.address_1,
-        address_2: form.address_2,
+          country: "IS",
+          city: form.city,
+          postcode: form.postcode,
+          address_1: form.address_1,
+          address_2: form.address_2,
           state: undefined,
         },
       );
@@ -145,27 +183,55 @@ export default function CheckoutForm() {
     }
   }, [form, lineItems, selectedShippingId]);
 
+  useEffect(() => {
+    const key = `${form.postcode.trim()}|${form.city.trim()}|${lineItems.length}`;
+    if (!form.postcode || !lineItems.length) return;
+    if (key === lastShippingFetchKey) return;
+
+    setLastShippingFetchKey(key);
+    void loadShippingRates();
+  }, [form.postcode, form.city, lineItems, lastShippingFetchKey, loadShippingRates]);
+
+  useEffect(() => {
+    void loadPaymentMethods();
+  }, [loadPaymentMethods]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!backendUrl) {
+      setError("Vantar slóð (NEXT_PUBLIC_WP_URL) í stillingum.");
+      return;
+    }
 
     if (!lineItems.length) {
       setError("Bættu a.m.k. einni vöru í körfuna áður en greiðsluferli hefst.");
       return;
     }
 
+    if (!selectedPaymentMethod) {
+      setError("Veldu greiðslumáta til að halda áfram.");
+      return;
+    }
+
     setStatus("loading");
     setError(null);
 
-    const rates = await loadShippingRates();
+    const rates = shippingRates.length ? shippingRates : await loadShippingRates();
     const shippingChoice =
       rates.find((rate) => rate.id === selectedShippingId) ??
       shippingRates.find((rate) => rate.id === selectedShippingId) ??
       rates[0] ??
       shippingRates[0];
 
-    const payload: CartShape = {
-      payment_method: selectedPaymentMethod.id,
-      payment_method_title: selectedPaymentMethod.title,
+    if (!shippingChoice) {
+      setStatus("error");
+      setError("Veldu sendingarleið til að halda áfram.");
+      return;
+    }
+
+    const payload = {
+      items: lineItems,
       billing: { ...form, country: "IS", state: "" },
       shipping: {
         ...form,
@@ -173,30 +239,16 @@ export default function CheckoutForm() {
         state: "",
         email: form.email,
       },
-      line_items: lineItems,
-      shipping_lines: shippingChoice
-        ? [
-            {
-              method_title: shippingChoice.label,
-              method_id: shippingChoice.method_id || shippingChoice.id,
-              total: String(shippingChoice.cost ?? 0),
-              total_tax: "0",
-            },
-          ]
-        : [
-            {
-              method_title: "Hraðsending",
-              method_id: "flat_rate",
-              total: "0",
-              total_tax: "0",
-            },
-          ],
-      customer_id: 0,
-      set_paid: false,
+      shipping_rate_id: shippingChoice.id,
+    } satisfies {
+      items: CartShape["line_items"];
+      billing: CartShape["billing"];
+      shipping: CartShape["shipping"];
+      shipping_rate_id: string;
     };
 
     try {
-      const response = await fetch("/api/orders", {
+      const response = await fetch(`${backendUrl}/wp-json/tactica/v1/checkout-borgun`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -204,25 +256,21 @@ export default function CheckoutForm() {
         body: JSON.stringify(payload),
       });
 
+      const data = await response.json().catch(() => null);
+
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
         throw new Error(
           data?.message ?? "Ekki tókst að ljúka greiðsluferlinu.",
         );
       }
 
-      const data = await response.json().catch(() => null);
-      setStatus("success");
-      clearCart();
-      setForm(initialForm);
-      setPaymentMethod(paymentMethods[0].id);
-      setShippingRates([]);
-      setSelectedShippingId(null);
-      const orderId = data?.id;
-      const orderConfirmationUrl: OrderConfirmationRoute = orderId
-        ? `/order-confirmation?orderId=${orderId}`
-        : "/order-confirmation";
-      router.push(orderConfirmationUrl);
+      if (data?.success && data?.redirect) {
+        setStatus("success");
+        window.location.href = data.redirect as string;
+        return;
+      }
+
+      throw new Error("Greiðslan skilaði ekki endurbeiningu.");
     } catch (err) {
       setStatus("error");
       setError(
@@ -281,14 +329,13 @@ export default function CheckoutForm() {
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {shippingRates.length === 0 ? (
-            <button
-              type="button"
-              onClick={() => void loadShippingRates()}
-              disabled={shippingLoading}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed"
-            >
-              {shippingLoading ? "Sæki sendingarmáta..." : "Sækja sendingarleiðir"}
-            </button>
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-semibold text-white">
+              {shippingLoading
+                ? "Sæki sendingarmáta..."
+                : form.postcode
+                  ? "Sendingarleiðir eru sóttar sjálfkrafa eftir póstnúmeri."
+                  : "Sláðu inn póstnúmer til að sjá sendingarleiðir."}
+            </div>
           ) : (
             shippingRates.map((rate) => {
               const isSelected = rate.id === selectedShippingId;
@@ -328,38 +375,52 @@ export default function CheckoutForm() {
           Greiðslumáti
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {paymentMethods.map((method) => {
-            const isSelected = method.id === paymentMethod;
-            return (
-              <label
-                key={method.id}
-                className={`flex cursor-pointer flex-col gap-1 rounded-2xl border px-4 py-3 transition ${
-                  isSelected
-                    ? "border-emerald-300/80 bg-emerald-300/10"
-                    : "border-white/10 bg-white/5 hover:border-white/30"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <input
-                    type="radio"
-                    name="payment_method"
-                    value={method.id}
-                    checked={isSelected}
-                    onChange={() => setPaymentMethod(method.id)}
-                    className="h-4 w-4 accent-emerald-300"
-                  />
-                  <div>
-                    <p className="font-semibold text-white">{method.title}</p>
-                    {method.description ? (
-                      <p className="text-sm text-white/60">
-                        {method.description}
-                      </p>
-                    ) : null}
+          {paymentLoading ? (
+            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+              Sæki greiðslumáta...
+            </div>
+          ) : paymentMethods.length === 0 ? (
+            <button
+              type="button"
+              onClick={() => void loadPaymentMethods()}
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm font-semibold text-white transition hover:border-white/30 disabled:cursor-not-allowed"
+            >
+              Sækja greiðslumáta
+            </button>
+          ) : (
+            paymentMethods.map((method) => {
+              const isSelected = method.id === paymentMethod;
+              return (
+                <label
+                  key={method.id}
+                  className={`flex cursor-pointer flex-col gap-1 rounded-2xl border px-4 py-3 transition ${
+                    isSelected
+                      ? "border-emerald-300/80 bg-emerald-300/10"
+                      : "border-white/10 bg-white/5 hover:border-white/30"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="payment_method"
+                      value={method.id}
+                      checked={isSelected}
+                      onChange={() => setPaymentMethod(method.id)}
+                      className="h-4 w-4 accent-emerald-300"
+                    />
+                    <div>
+                      <p className="font-semibold text-white">{method.title}</p>
+                      {method.description ? (
+                        <p className="text-sm text-white/60">
+                          {method.description}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              </label>
-            );
-          })}
+                </label>
+              );
+            })
+          )}
         </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-6 py-4">
@@ -371,7 +432,7 @@ export default function CheckoutForm() {
         </div>
         <button
           type="submit"
-          disabled={status === "loading"}
+          disabled={status === "loading" || !selectedPaymentMethod}
           className="rounded-full bg-emerald-400/90 px-8 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed"
         >
           {status === "loading" ? "Vinnsla..." : "Staðfesta pöntun"}

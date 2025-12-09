@@ -30,10 +30,11 @@ export default function RootLayout({
   return (
     <html lang="is">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} bg-slate-950 antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} theme-light antialiased transition-colors duration-300`}
+        suppressHydrationWarning
       >
         <Providers>
-          <div className="flex min-h-screen flex-col text-white">
+          <div className="flex min-h-screen flex-col text-[var(--text-primary)]">
             <Header />
             <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-12 px-4 py-12 sm:px-6 lg:px-8">
               {children}

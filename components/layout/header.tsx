@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Route } from "next";
 
 import CartLink from "@/components/cart/cart-link";
+import ThemeToggle from "@/components/theme/theme-toggle";
 
 const navItems: Array<{ href: Route; label: string }> = [
   { href: "/", label: "Heim" },
@@ -11,7 +12,7 @@ const navItems: Array<{ href: Route; label: string }> = [
 
 export default function Header() {
   return (
-    <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur">
+    <header className="site-header sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="flex items-center">
           <Image
@@ -19,7 +20,7 @@ export default function Header() {
             alt="Tactica merki"
             width={140}
             height={32}
-            className="h-8 w-auto"
+            className="header-logo h-8 w-auto transition"
             priority
           />
         </Link>
@@ -34,7 +35,10 @@ export default function Header() {
             </Link>
           ))}
         </nav>
-        <CartLink />
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <CartLink />
+        </div>
       </div>
     </header>
   );
