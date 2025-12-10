@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import ProductGrid from "@/components/product/product-grid";
 import type { Product } from "@/types/woocommerce";
@@ -43,6 +43,14 @@ export default function ProductGridLoadMore({
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(initialProducts.length === perPage);
   const [error, setError] = useState<string | null>(null);
+
+  // Keep list in sync when filters/search change without requiring a full reload.
+  useEffect(() => {
+    setProducts(initialProducts);
+    setPage(initialPage);
+    setHasMore(initialProducts.length === perPage);
+    setError(null);
+  }, [initialProducts, initialPage, perPage, query, categoryId]);
 
   const handleLoadMore = async () => {
     if (isLoading || !hasMore) {
